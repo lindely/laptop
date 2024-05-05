@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+wpa_cli status | grep "^$1=" | awk -F '=' '{print $2}'

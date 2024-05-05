@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+notify-send "$1" "$2"
+eww update bsnotification="$2"

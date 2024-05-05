@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+
+CHARGE=$(acpiconf -i 0 | grep "Remaining capacity:" | awk '{print $3}')
+
+
+if [ "$1" == "status" ]; then
+  STATE=$(acpiconf -i 0 | grep "State:" | awk '{print $2}')
+  if [ "$STATE" == "discharging" ]; then
+    echo "resterend"
+    exit
+  fi
+
+  REMAINING=$(acpiconf -i 0 | grep "Remaining time:" | awk '{print $3}')
+
+  if [ "$REMAING" == "unknown" ]; then
+    echo "netstroom"
+  else
+    echo "opladen"
+  fi
+  exit
+fi
+
+echo "${CHARGE%\%*}"

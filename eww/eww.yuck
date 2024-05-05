@@ -1,0 +1,162 @@
+; Listeners die op nieuwe input wachten o.b.v. de script-uitvoer.
+(deflisten activewindow `scripts/activewindow`)
+(deflisten workspaces :initial "{}" `scripts/workspaces`)
+
+; Pollers voor informatie.
+(defpoll currenttime :interval "1s" "date '+%a %e %b, %H:%M'")
+(defpoll bstime :interval "1s" "date '+%H:%M'")
+(defpoll batterystatus :initial "100" :interval "10s" "~/.config/eww/scripts/battery")
+(defpoll wifistate :interval "10s" "~/.config/eww/scripts/wifi wpa_state")
+
+; Variabelen voor gebruik in widgets.
+(defvar batteryrev false)
+(defvar wpswitchactive false)
+(defvar bsnotification "")
+
+; Widget dat de werkbladen rendert, de actieve markeert en bij een klik wisselt.
+(defwidget workspaces []
+  (box :class "workspaces"
+    (eventbox :class "eventbox"
+      (box :space-evenly false :spacing 8 :class "widget" :orientation "h"
+        (for workspace in {workspaces.workspaces}
+          (button :class "btn ${workspace.id == workspaces.active ? "active" : ""} ${workspaces.windows == "" ? "empty" : ""}"
+            :onclick "hyprctl dispatch workspace ${workspace.id}" :valign "center" :tooltip "${workspace.windows}"
+              (label :class "label" :text {workspace.id})))))))
+
+; Widget dat de actieve applicatie toont.
+(defwidget application [] 
+  (box :class "application" :hexpand true
+    (label :class "label" :text {activewindow})))
+
+; Widget dat op basis van de waarde van de opgegeven lading een bepaalde output geeft.
+(defwidget batteryicon [charge full high half low empty]
+  (box :class "battery" :space-evenly false 
+    (button
+      :onclick {batteryrev ? "eww update batteryrev=false" : "eww update batteryrev=true"}
+      :class {charge < 25 ? "danger" : charge < 50 ? "warning" : ""}
+      {charge < 20 ? empty : charge < 40 ? low : charge < 60 ? half : charge < 80 ? high : full})))
+
+; Ingevulde versie van (batteryicon) met iconen voorgedefinieerd.
+(defwidget batteryiconized []
+  (batteryicon :charge {batterystatus} :full "" :high "" :half "" :low "" :empty ""))
+
+; Widget dat een icoon toont met de accustatus en (uitklapbaar) de evt. status van de lading.
+(defwidget battery []
+  (box :orientation "h" :space-evenly false
+    (batteryiconized)
+    (eventbox
+      (revealer :transition "slideright" :reveal batteryrev :duration ".5s"
+        (label :class "battery-lbl" :text "${batterystatus}%")))))
+
+; Widget dat een icoon toont met de wifi-status.
+(defwidget wifi []
+  (box :class "wifi" :orientation "h" :space-evenly false
+    (button :onclick "hyprctl dispatch exec wpa_gui" 
+      (label :text {wifistate == "DISCONNECTED" ? "" : wifistate == "SCANNING" ? "" : ""} :class "state ${wifistate}"))))
+
+; Widget dat de datum en tijd toont.
+(defwidget time []
+  (box :orientation "h" :class "time" :halign "end"
+    (button :class "time" currenttime)))
+
+; Widget waarmee de wallpaperwisselaar kan worden geopend.
+(defwidget wallpaper []
+  (box :orientation "h" 
+    (button :class "wallpaper-btn ${wpswitchactive ? 'active' : ''}" :onclick "eww open --toggle wpswitcher; eww update wpswitchactive=${wpswitchactive ? 'false' : 'true'}" "")))
+
+; Linkerdeel van de balk met de werkbladen.
+(defwidget bar_start []
+  (box :orientation "h" :space-evenly false :spacing 16 :halign "start"
+    (workspaces)
+    (wallpaper)))
+
+; Middelste deel van de balk met de actieve applicatie.
+(defwidget bar_middle []
+  (box :orientation "h" :hexpand true
+    (application)))
+
+; Rechterdeel van de balk met tijd en iconen.
+(defwidget bar_end []
+  (box :class "end" :orientation "h" :space-evenly false :halign "end" :spacing 15
+    ;(battery :charge {batterystatus} :full "" :high "" :half "" :low "" :empty "")
+    (wifi)
+    (battery)
+    (time)))
+
+; Taakbalkwidget bestaande uit drie subonderdelen.
+(defwidget bar []
+  (box :class "eww-bar" :orientation "h" :space-evenly false
+    (bar_start)
+    (bar_middle)
+    (bar_end)))
+
+; Venster voor de taakbalk die onderin beeld wordt getoond.
+(defwindow bar
+  :namespace "eww.bar" :stacking "fg" :exclusive true :focusable false :monitor 0 
+    :geometry (geometry :width "67%" :height "28px" :anchor "bottom center") ; Zonder anchor werkt exclusive niet.
+    (bar))
+
+;;
+;; BIGSCREEN
+;; Volledige overlay met de mogelijkheid om uit te loggen, te herstarten of af te sluiten. Toont
+;; ook enkele informatieve widgets.
+;;
+
+; Widget met knoppen voor afsluiten, herstarten en uitloggen.
+(defwidget powermenu [shutdown shutdown_icon reboot reboot_icon logout logout_icon]
+  (box :spacing 32 :vexpand true :hexpand true :valign "end" :halign "end" :space-evenly false
+    (button :class "shutdown" :onclick shutdown shutdown_icon)
+    (button :class "reboot" :onclick reboot reboot_icon)
+    (button :class "logout" :onclick logout logout_icon)))
+
+; Widget dat het scherm opdeelt en contentwidgets rendert in de bovenste en onderste delen.
+(defwidget bsoverlay []
+  (box :space-evenly false :orientation "vertical"
+    ;(box :class "top" :valign "start" :halign "end" :space-evenly false :spacing 16
+    (box :class "top" :valign "start"
+      (box :class "notification" :valign "start" :halign "start" :visible {bsnotification == "" ? false : true}
+        (label :text {bsnotification}))
+      (box :valign "start" :halign "end" :space-evenly false :spacing 16
+        (wifi)
+        (batteryiconized)
+        (button :onclick "eww close bigscreen" :class "close-btn" "")))
+    (box :class "bottom" :space-evenly false :hexpand true :vexpand true :orientation "h" 
+      (box :class "clock" :halign "start" :valign "end"
+        (label :class "clock-lbl" :text {bstime}))
+      (box :class "power" :space-evenly false :hexpand true :valign "end" :halign "end"
+         (powermenu :shutdown "~/.config/eww/scripts/shutdown poweroff"
+                    :reboot "~/.config/eww/scripts/shutdown reboot"
+                    :logout "~/.config/eww/scripts/shutdown"
+                    :shutdown_icon ""
+                    :reboot_icon ""
+                    :logout_icon ""))))) 
+
+; Volledige overlay waarin de eerder gedefinieerde widgets worden getoond.
+(defwindow bigscreen
+  :namespace "eww.bigscreen" :stacking "overlay" :focusable true :monitor 0
+    :geometry (geometry :width "100%" :height "100%" :anchor "top left")
+      (bsoverlay))
+
+;;
+;; WALLPAPERWISSELAAR
+;;
+(defwidget wp [wp]
+  (button :class "wp"
+    :geometry (geometry :width "192px" :height "108px")
+    :onclick "hyprctl hyprpaper wallpaper 'eDP-1,/home/jn/.config/hypr/wallpaper/${wp}'; eww close wpswitcher; eww update wpswitchactive=false"
+    (image :path "/home/jn/.config/hypr/wallpaper/thumbnails/${wp}" :image-width 192 :image-height 108)))
+
+(defwidget wpswitcher []
+  (box :class "wpswitcher" :spacing 0 :hexpand false :vexpand false :orientation "v"
+    (box :class "wpthumbs" :spacing 0
+      (wp :wp "Re:01.jpg")
+      (wp :wp "OnePieceStrongWorld.jpg")
+      (wp :wp "m0m00.jpg"))
+    (box :class "wpthumbs" :spacing 0
+      (wp :wp "hououbds.jpg")
+      (wp :wp "Nikke.jpg")
+      (wp :wp "BlueArchive.jpg"))))
+
+(defwindow wpswitcher :namespace "eww.wpswitcher" :stacking "fg" :focusable false :monitor 0
+  :geometry (geometry :width "608px" :height "232px" :anchor "bottom left")
+    (wpswitcher))

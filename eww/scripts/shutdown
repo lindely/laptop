@@ -1,0 +1,41 @@
+#!/usr/bin/env sh
+
+NOTIFY="/home/jn/.config/eww/scripts/notify"
+
+# Ga na of Firefox nog actief is.
+FIREFOX=$(hyprctl clients | grep "class: firefox" | wc -l)
+
+# Als er meer dan een venster actief is kunnen we niet doorgaan omdat
+# er dan data verloren gaat.
+if [ "$FIREFOX" -gt "1" ]; then
+  $NOTIFY "Meerdere Firefox-vensters actief." "Sluit Firefox handmatig om geen data te verliezen."
+  exit 1
+fi
+
+sleep 3
+
+HYPRCMDS=$(hyprctl -j clients | jq -j '.[] | "dispatch closewindow address:\(.address); "')
+hyprctl --batch "$HYPRCMDS" >> /tmp/hypr/hyprexitwithgrace.log 2>&1
+
+$NOTIFY "Applicaties afsluiten" "Bezig met het sluiten van open applicaties."
+
+sleep 3
+
+# Controleer of alle applicatis gesloten zijn. Als dit niet zo is dan
+# wordt de procedure geannuleerd.
+OPEN=$(hyprcl clients | grep "class:" | wc -l)
+
+if [ "$OPEN" -eq "0" ]; then
+  $NOTIFY "Applicaties afgesloten" "Alle applicaties zijn afgesloten."
+else
+  $NOTIFY "Afsluiten geannuleerd" "Niet alle applicaties zijn afgesloten."
+  exit 1
+fi
+
+if [ "$1" == "reboot" ]; then
+  shutdown -r now
+elif [ "$1" == "poweroff" ]; then
+  shutdown -p now
+else
+  hyprctl dispatch exit
+fi

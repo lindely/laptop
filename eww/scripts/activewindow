@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+activewindow() {
+  WINDOW_TITLE=$(hyprctl activewindow -j | jq --raw-output .title)
+  OUTPUT=""
+
+  declare -A apps=(
+    ["󰈹  Firefox"]="(.*)Mozilla Firefox$"
+    ["  Vim"]="vim"
+    ["  Neovim"]="nvim"
+  )
+
+  for key in "${!apps[@]}"; do
+    if [[ `echo $WINDOW_TITLE | grep -E "${apps[$key]}"` ]]; then
+      OUTPUT="$key"
+      break 
+    fi
+  done
+
+  if [[ "$OUTPUT" == "" ]]; then 
+    size=${#WINDOW_TITLE}
+    if [ $size -gt 30 ]; then
+      echo "`echo $WINDOW_TITLE | cut -c 1-30`..."
+    elif [[ "$WINDOW_TITLE" == "null" ]]; then
+      echo ""
+    else
+      echo "$WINDOW_TITLE"
+    fi
+  else
+    echo "$OUTPUT"
+  fi
+}
+
+activewindow
+
+# Lees uit de Hyprland-socket wat het venster is als er gewisseld wordt.
+socat -u UNIX-CONNECT:/tmp/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock - | while read -r line; do
+  activewindow
+done
